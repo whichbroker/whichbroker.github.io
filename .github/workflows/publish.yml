@@ -1,1 +1,51 @@
+# Publishes the delayed Firm Brokers board to GitHub Pages.
+#
+# Zero dependencies by design: Node 22 has fetch built in, so there is no
+# install step and a run finishes in seconds rather than minutes. On a public
+# repository Actions minutes are unmetered, so a 5-minute cadence is free.
+#
+# The delay is enforced by build.mjs (DELAY_MINUTES), not by this schedule.
+# Changing the cron changes how fresh the board is, not how far behind it sits.
+name: publish
 
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node build.mjs
+        env:
+          OPENSEA_API_KEY: ${{ secrets.OPENSEA_API_KEY }}
+          DELAY_MINUTES: "5"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
