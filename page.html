@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Firm Brokers — listings by level (delayed)</title>
+<style>
+  :root{--bg:#0e1116;--panel:#161b22;--line:#262d36;--fg:#e6edf3;--dim:#8b949e;--up:#3fb950;--new:#d29922;--accent:#58a6ff;--hover:#11161d}
+  :root[data-theme="light"]{--bg:#fff;--panel:#f6f8fa;--line:#d0d7de;--fg:#1f2328;--dim:#656d76;--up:#1a7f37;--new:#9a6700;--accent:#0969da;--hover:#f6f8fa}
+  @media (prefers-color-scheme: light){
+    :root[data-theme="auto"]{--bg:#fff;--panel:#f6f8fa;--line:#d0d7de;--fg:#1f2328;--dim:#656d76;--up:#1a7f37;--new:#9a6700;--accent:#0969da;--hover:#f6f8fa}
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;display:flex;flex-direction:column}
+  header{flex:0 0 auto;padding:12px 18px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+  h1{font-size:15px;margin:0;letter-spacing:.08em;text-transform:uppercase}
+  .pill{font-size:12px;color:var(--dim)}
+  .pill b{color:var(--fg)}
+  .filters{flex:0 0 auto;padding:10px 18px;border-bottom:1px solid var(--line);display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;font-size:12px;background:var(--panel)}
+  .filters label{color:var(--dim);display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+  .filters input[type=text],.filters input[type=number]{background:var(--bg);border:1px solid var(--line);color:var(--fg);font:inherit;padding:3px 7px;border-radius:5px;width:92px}
+  .filters input[type=checkbox]{accent-color:var(--accent)}
+  button{background:none;border:1px solid var(--line);color:var(--dim);font:inherit;font-size:11px;letter-spacing:.06em;padding:3px 10px;border-radius:12px;cursor:pointer}
+  button:hover{color:var(--fg);border-color:var(--dim)}
+  .wrap{flex:1 1 auto;overflow:auto;min-height:0}
+  table{border-collapse:collapse;width:100%;min-width:720px}
+  th{position:sticky;top:0;z-index:1;background:var(--panel);text-align:left;font-size:11px;letter-spacing:.08em;color:var(--dim);padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap}
+  th:hover{color:var(--fg)}
+  th .ar{opacity:.5}
+  td{padding:7px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  tr:hover td{background:var(--hover)}
+  .id{color:var(--accent);text-decoration:none}
+  .id:hover{text-decoration:underline}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .lv{color:var(--dim)}
+  .lv b{color:var(--fg)}
+  .tag{font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--line)}
+  .earn{color:var(--up);border-color:#1c3a24}
+  .out,.never{color:var(--dim)}
+  .leg{color:var(--new);border-color:#4a3a12}
+  .mg{color:var(--new)}
+  footer{flex:0 0 auto;padding:9px 18px;color:var(--dim);font-size:11px;border-top:1px solid var(--line)}
+  .delaynote{color:var(--new)}
+</style></head><body>
+<header>
+  <h1>Firm Brokers</h1>
+  <span class="pill"><b id="shown">0</b> shown</span>
+  <span class="pill">floor <b id="floor">—</b> ETH</span>
+  <span class="pill" id="tiers"></span>
+  <span class="pill" id="upd"></span>
+  <button id="theme" type="button" style="margin-left:auto">DARK</button>
+</header>
+<div class="filters">
+  <label>BROKER # <input type="text" id="q" placeholder="e.g. 4246" autocomplete="off"></label>
+  <span class="pill">LEVEL</span>
+  <label><input type="checkbox" class="lvf" value="1" checked> INTERN</label>
+  <label><input type="checkbox" class="lvf" value="2" checked> ANALYST</label>
+  <label><input type="checkbox" class="lvf" value="3" checked> MANAGER</label>
+  <label><input type="checkbox" class="lvf" value="4" checked> VP</label>
+  <label><input type="checkbox" class="lvf" value="5" checked> CEO</label>
+  <label><input type="checkbox" id="fMerged"> merged only</label>
+  <label><input type="checkbox" id="fLegend"> 1/1 only</label>
+  <label>MIN <input type="number" id="fMin" step="0.001" placeholder="0"></label>
+  <label>MAX <input type="number" id="fMax" step="0.001" placeholder="∞"></label>
+  <button id="reset" type="button">RESET</button>
+</div>
+<div class="wrap"><table>
+<thead><tr>
+  <th data-k="brokerNo">BROKER #</th>
+  <th data-k="listedAt">LISTED</th>
+  <th data-k="priceEth" class="num">PRICE ETH</th>
+  <th data-k="level">LEVEL</th>
+  <th data-k="multiplier" class="num">MULT</th>
+  <th data-k="parts">MERGED</th>
+  <th data-k="status">STATUS</th>
+</tr></thead>
+<tbody id="rows"></tbody>
+</table></div>
+<footer id="foot"></footer>
+<script>
+const NFT = "0x2d4dff47ba18c89847faca0c968e073d8b70abb4";
+const THEMES = ["dark","light","auto"];
+let theme = "dark";
+try { const sv = localStorage.getItem("firm.theme"); if (THEMES.includes(sv)) theme = sv; } catch(e){}
+function applyTheme(){
+  document.documentElement.setAttribute("data-theme", theme);
+  const b = document.getElementById("theme"); if(b) b.textContent = theme==="auto"?"SYSTEM":theme.toUpperCase();
+  try { localStorage.setItem("firm.theme", theme); } catch(e){}
+}
+applyTheme();
+document.getElementById("theme").onclick = () => { theme = THEMES[(THEMES.indexOf(theme)+1)%THEMES.length]; applyTheme(); };
+
+const NAMES = {1:"INTERN",2:"ANALYST",3:"MANAGER",4:"VP",5:"CEO"};
+// Cheapest first: browsers arrive looking for what they can afford,
+// not for what was listed most recently.
+let sortKey = "priceEth", desc = false, last = null;
+const fmtAgo = (iso) => { if(!iso) return "-"; const m = Math.max(0, Math.round((Date.now()-new Date(iso))/60000));
+  if (m < 60) return m + "m"; const h = Math.floor(m/60); return h < 48 ? h + "h" : Math.floor(h/24) + "d"; };
+
+document.querySelectorAll("th").forEach(th => th.onclick = () => {
+  const k = th.dataset.k; desc = sortKey === k ? !desc : true; sortKey = k; render(last); });
+["q","fMin","fMax"].forEach(id => document.getElementById(id).addEventListener("input", () => render(last)));
+["fMerged","fLegend"].forEach(id => document.getElementById(id).addEventListener("change", () => render(last)));
+document.querySelectorAll(".lvf").forEach(el => el.addEventListener("change", () => render(last)));
+document.getElementById("reset").onclick = () => {
+  document.getElementById("q").value = "";
+  document.getElementById("fMin").value = ""; document.getElementById("fMax").value = "";
+  ["fMerged","fLegend"].forEach(id => document.getElementById(id).checked = false);
+  document.querySelectorAll(".lvf").forEach(el => el.checked = true);
+  render(last);
+};
+
+function passes(r){
+  const q = document.getElementById("q").value.trim();
+  if (q && String(r.brokerNo) !== q) return false;
+  const levels = [...document.querySelectorAll(".lvf")].filter(e=>e.checked).map(e=>Number(e.value));
+  if (r.level !== null && !levels.includes(r.level)) return false;
+  if (document.getElementById("fMerged").checked && !(r.parts>=2)) return false;
+  if (document.getElementById("fLegend").checked && !r.legendary) return false;
+  const mn = parseFloat(document.getElementById("fMin").value);
+  const mx = parseFloat(document.getElementById("fMax").value);
+  if (!isNaN(mn) && r.priceEth < mn) return false;
+  if (!isNaN(mx) && r.priceEth > mx) return false;
+  return true;
+}
+
+function render(d){
+  if(!d) return; last = d;
+  const all = d.rows.filter(passes);
+  const rows = all.sort((a,b)=>{
+    const x=a[sortKey], y=b[sortKey];
+    const cmp = (sortKey==="listedAt") ? new Date(x||0)-new Date(y||0)
+      : (typeof x === "number" ? x-y : String(x??"").localeCompare(String(y??"")));
+    return desc ? -cmp : cmp; });
+  document.querySelectorAll("th").forEach(th=>{
+    th.innerHTML = th.innerHTML.replace(/ <span class="ar">.*<\/span>/,"");
+    if (th.dataset.k === sortKey) th.innerHTML += ' <span class="ar">' + (desc?"▼":"▲") + '</span>'; });
+  document.getElementById("shown").textContent = rows.length;
+  document.getElementById("floor").textContent = rows.length ? Math.min(...rows.map(r=>r.priceEth)).toFixed(4) : "—";
+  const fl = {};
+  for (const r of d.rows){ if(r.level==null||r.status==="UNREAD") continue;
+    if(fl[r.level]===undefined||r.priceEth<fl[r.level]) fl[r.level]=r.priceEth; }
+  document.getElementById("tiers").innerHTML = [1,2,3,4,5]
+    .map(l => NAMES[l] + " <b>" + (fl[l]===undefined?"—":fl[l].toFixed(4)) + "</b>").join(" &nbsp; ");
+  document.getElementById("upd").textContent = "as of " + new Date(d.at).toLocaleTimeString();
+  // The delay disclosure lives here now rather than in a banner. The footer is
+  // a flex item pinned to the viewport, not content below the fold, so it stays
+  // on screen at every scroll position — which is what makes it adequate.
+  document.getElementById("foot").innerHTML =
+    '<b class="delaynote">Delayed ' + d.delayMinutes + ' minutes — listings appear here '
+    + d.delayMinutes + ' minutes after they go live on OpenSea. Not a real-time feed.</b> '
+    + d.stats.total + " listings are live right now. "
+    + "Level, multiplier and merge status are read from the EmployeeNFT contract — OpenSea cannot filter on them because they are not token metadata. "
+    + "Click a broker number to open that listing on OpenSea. "
+    + "Independent tool, not affiliated with Firm Brokers.";
+  const body = document.getElementById("rows");
+  if (!rows.length){
+    body.innerHTML = '<tr><td colspan="7" style="padding:26px 12px;color:var(--dim)">'
+      + (d.stats.seeding ? "Loading listings…" : "No listings match these filters.") + '</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const st = r.status==="EARNING" ? '<span class="tag earn">EARNING</span>'
+      : r.status==="CLOCKED OUT" ? '<span class="tag out">CLOCKED OUT</span>'
+      : r.status==="UNREAD" ? '<span class="tag out">—</span>'
+      : '<span class="tag never">NEVER HIRED</span>';
+    return '<tr>'
+      + '<td><a class="id" target="_blank" rel="noopener" href="https://opensea.io/item/robinhood/' + NFT + '/' + r.tokenId + '">#' + r.brokerNo + '</a>'
+        + (r.legendary ? ' <span class="tag leg">1/1</span>' : '') + '</td>'
+      + '<td>' + fmtAgo(r.listedAt) + '</td>'
+      + '<td class="num">' + r.priceEth.toFixed(5) + '</td>'
+      + '<td class="lv">' + (r.level===null ? "—" : "L" + r.level + " <b>" + r.levelName + "</b>") + '</td>'
+      + '<td class="num">' + (r.multiplier ? "×" + r.multiplier.toFixed(2) : "—") + '</td>'
+      + '<td class="' + (r.parts>=2?"mg":"") + '">' + r.merged + '</td>'
+      + '<td>' + st + '</td>'
+      + '</tr>'; }).join("");
+}
+function load(){
+  fetch("listings.json?t=" + Date.now(), { cache: "no-store" })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (d) render(d); })
+    .catch(() => {});
+}
+load();
+setInterval(load, 120000);
+setInterval(() => render(last), 30000);
+</script></body></html>
