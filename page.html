@@ -40,6 +40,8 @@
   .mg{color:var(--new)}
   footer{flex:0 0 auto;padding:9px 18px;color:var(--dim);font-size:11px;border-top:1px solid var(--line)}
   .delaynote{color:var(--new)}
+  .pill.staleish{color:var(--new)}
+  .pill.stalewarn{color:var(--new);font-weight:700}
 </style></head><body>
 <header>
   <h1>Firm Brokers</h1>
@@ -93,6 +95,7 @@ const NAMES = {1:"INTERN",2:"ANALYST",3:"MANAGER",4:"VP",5:"CEO"};
 // Cheapest first: browsers arrive looking for what they can afford,
 // not for what was listed most recently.
 let sortKey = "priceEth", desc = false, last = null;
+const fmtAge = (m) => m < 60 ? m + " min" : (m/60) < 24 ? (m/60).toFixed(1).replace(".0","") + " hr" : Math.round(m/1440) + " d";
 const fmtAgo = (iso) => { if(!iso) return "-"; const m = Math.max(0, Math.round((Date.now()-new Date(iso))/60000));
   if (m < 60) return m + "m"; const h = Math.floor(m/60); return h < 48 ? h + "h" : Math.floor(h/24) + "d"; };
 
@@ -141,14 +144,22 @@ function render(d){
     if(fl[r.level]===undefined||r.priceEth<fl[r.level]) fl[r.level]=r.priceEth; }
   document.getElementById("tiers").innerHTML = [1,2,3,4,5]
     .map(l => NAMES[l] + " <b>" + (fl[l]===undefined?"—":fl[l].toFixed(4)) + "</b>").join(" &nbsp; ");
-  document.getElementById("upd").textContent = "as of " + new Date(d.at).toLocaleTimeString();
+  // How old the data actually is. The build schedule is best-effort, so the
+  // configured delay is a floor, never a promise about freshness — saying
+  // "delayed 5 minutes" beside hour-old prices would be a lie of omission.
+  const ageMin = Math.max(0, Math.round((Date.now() - new Date(d.at)) / 60000));
+  const upd = document.getElementById("upd");
+  upd.textContent = ageMin < 1 ? "updated just now" : "data " + fmtAge(ageMin) + " old";
+  upd.className = "pill" + (ageMin >= 30 ? " stalewarn" : ageMin >= 15 ? " staleish" : "");
   // The delay disclosure lives here now rather than in a banner. The footer is
   // a flex item pinned to the viewport, not content below the fold, so it stays
   // on screen at every scroll position — which is what makes it adequate.
   document.getElementById("foot").innerHTML =
-    '<b class="delaynote">Delayed ' + d.delayMinutes + ' minutes — listings appear here '
-    + d.delayMinutes + ' minutes after they go live on OpenSea. Not a real-time feed.</b> '
-    + d.stats.total + " listings are live right now. "
+    '<b class="delaynote">Not a real-time feed. This snapshot is ' + fmtAge(ageMin) + ' old ('
+    + new Date(d.at).toLocaleString() + '), and no listing appears here sooner than '
+    + d.delayMinutes + ' minutes after it goes live on OpenSea.</b> '
+    + "Prices and availability may have changed since. "
+    + d.stats.total + " listings were live at build time. "
     + "Level, multiplier and merge status are read from the EmployeeNFT contract — OpenSea cannot filter on them because they are not token metadata. "
     + "Click a broker number to open that listing on OpenSea. "
     + "Independent tool, not affiliated with Firm Brokers.";
